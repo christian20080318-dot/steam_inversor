@@ -1,0 +1,25 @@
+# Entorno y Secretos Sensibles (¡NUNCA SUBIR A GITHUB!)
+.env
+steam_session.json
+*.db
+investor.db
+
+# Gráficos e Historiales generados
+charts/*.png
+charts/*.jpg
+
+# Python y Entornos Virtuales
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env.local
+
+# Logs y Archivos Temporales
+*.log
+scratch/
+.system_generated/
+.DS_Store
+Thumbs.db

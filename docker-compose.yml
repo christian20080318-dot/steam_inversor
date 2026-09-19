@@ -1,0 +1,13 @@
+services:
+  steam-bot:
+    build: .
+    container_name: steam_investor_bot
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./investor.db:/app/investor.db
+      - ./charts:/app/charts
+      - ./knowledge:/app/knowledge
