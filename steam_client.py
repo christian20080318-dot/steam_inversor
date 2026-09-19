@@ -85,25 +85,30 @@ WATCHLIST = [
 ]
 
 def clean_price_string(price_str):
-    """Convierte texto como 'S/. 3.45', 'S/ 3,45' o 'S/. 1,250.00' a float"""
+    """Convierte texto como 'S/.0.61', 'S/. 3.45', 'S/ 3,45' o 'S/. 1,250.00' a float exacto"""
     if not price_str:
         return None
-    clean = re.sub(r"[^\d,\.]", "", price_str).strip()
-    if not clean:
+    # Eliminar prefijos no numéricos al inicio ('S/.', 'S/', '$', 'COL$', etc.)
+    s = re.sub(r"^[^\d]+", "", str(price_str).strip())
+    s = re.sub(r"[^\d,\.]", "", s).strip()
+    if not s:
         return None
     
-    if "," in clean and "." in clean:
-        last_comma = clean.rfind(",")
-        last_dot = clean.rfind(".")
-        if last_comma > last_dot:
-            clean = clean.replace(".", "").replace(",", ".")
+    # Manejar separadores de miles y decimales
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
         else:
-            clean = clean.replace(",", "")
-    elif "," in clean:
-        clean = clean.replace(",", ".")
+            s = s.replace(",", "")
+    elif "," in s:
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            s = s.replace(",", ".")
+        else:
+            s = s.replace(",", "")
     
     try:
-        return float(clean)
+        return float(s)
     except ValueError:
         return None
 

@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Moneda: 27 es el código oficial de Steam para Soles Peruanos (PEN)
-STEAM_CURRENCY_ID = int(os.getenv("STEAM_CURRENCY_ID", 27))
+# Moneda: 26 es el código oficial de Steam para Soles Peruanos (PEN)
+STEAM_CURRENCY_ID = int(os.getenv("STEAM_CURRENCY_ID", 26))
 CURRENCY_SYMBOL = os.getenv("CURRENCY_SYMBOL", "S/")
 
 # Presupuesto y Gestión de Capital
