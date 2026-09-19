@@ -137,6 +137,11 @@ def fetch_item_price(app_id, market_hash_name):
             print("[ALERTA] Rate limit alcanzado en Steam (HTTP 429). Esperando 30 segundos...")
             time.sleep(30)
             return None
+            
+        if response.status_code == 401:
+            from notifier import send_telegram_emergency_auth_alert
+            send_telegram_emergency_auth_alert()
+            return None
         
         if response.status_code == 200:
             data = response.json()

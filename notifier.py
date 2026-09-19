@@ -43,8 +43,14 @@ def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
         f"🔢 *Cantidad Recomendada:* `{opp['quantity']} unidad(es)` (Ajustado a tu saldo)\n"
         f"💵 *Inversión Total en Cartera:* `{CURRENCY_SYMBOL} {opp['total_investment']:.2f}` / Saldo Steam: `{CURRENCY_SYMBOL} {opp.get('steam_wallet_available', 0.0):.2f}`\n"
         f"📈 *Ganancia Neta Estimada:* `+{CURRENCY_SYMBOL} {opp['total_net_profit']:.2f}` (*ROI: +{opp['roi_percent']:.1f}%* tras comisión)\n"
-        f"📊 *Volumen 24h:* {opp['volume_24h']} ventas/día\n\n"
-        f"{ai_section}"
+        f"📊 *Volumen 24h:* {opp['volume_24h']} ventas/día (~{opp['volume_24h'] * 30} ventas/mes)\n"
+    )
+    
+    if opp['volume_24h'] < 10:
+        mensaje += f"👻 *¡CUIDADO - ÍTEM FANTASMA!* (Liquidez extremadamente baja, muy difícil de revender)\n"
+    
+    mensaje += (
+        f"\n{ai_section}"
         f"ℹ️ *¿Qué hace el enlace?*\n"
         f"Abre directamente el mercado de Steam para que compres manualmente la cantidad indicada al precio ofertado.\n\n"
         f"🔗 [ABRIR LISTADO EN STEAM]({steam_url})\n\n"
@@ -98,15 +104,26 @@ def send_telegram_photo(image_path, caption=""):
 
 def send_telegram_simple_message(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return False
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload, timeout=10)
-        return True
     except Exception as e:
-        print(f"[ERROR] Error enviando texto a Telegram: {e}")
-        return False
+        print(f"Error enviando mensaje a Telegram: {e}")
+
+def send_telegram_emergency_auth_alert():
+    """Envía alerta crítica por desconexión HTTP 401 de Steam."""
+    text = (
+        "🚨 *EMERGENCIA: SESIÓN DE STEAM CERRADA (HTTP 401)* 🚨\n\n"
+        "El bot ha perdido conexión con tu cuenta de Steam.\n"
+        "El token actual (`steam_session.json`) expiró o Valve forzó una desconexión.\n\n"
+        "⚠️ El sistema ya no puede leer tu saldo real en Soles.\n"
+        "🔧 *Acción requerida:* Reinicia el bot o ejecuta la autenticación QR de nuevo para reconectar."
+    )
+    send_telegram_simple_message(text)
+    print("\n[ALERTA ROJA] Sesión cerrada. Se ha enviado aviso por Telegram.\n")
+    return False
 
 def send_gmail_alert(subject, html_content, attachment_image_path=None):
     """
