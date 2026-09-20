@@ -209,15 +209,16 @@ def run_market_scanner():
         print(f"ℹ️ [{current_time_str}] Escaneo completado: {scanned_count} activos revisados. Todo en rango normal de mercado. (Modo silencioso activo - Cero spam)")
 
 def run_keep_alive():
-    """Mantiene despierto el servicio web de Render enviando un ping cada 10 minutos"""
-    port = int(os.getenv("PORT", 8080))
-    url = f"http://127.0.0.1:{port}/api/data"
+    """Mantiene despierto el servicio web de Render enviando un ping externo cada 7 minutos"""
+    ext_url = os.getenv("RENDER_EXTERNAL_URL", "https://steam-inversor-1.onrender.com").rstrip("/")
+    url = f"{ext_url}/api/data"
     while True:
         try:
-            time.sleep(600) # Cada 10 minutos
-            requests.get(url, timeout=5)
-        except Exception:
-            pass
+            time.sleep(420) # Cada 7 minutos (antes de los 15 minutos de inactividad de Render)
+            requests.get(url, timeout=15)
+            print("🏓 [Keep-Alive] Ping externo enviado a Render para evitar suspensión.")
+        except Exception as e:
+            print(f"[Keep-Alive Error] {e}")
 
 def run_steam_session_refresher():
     """

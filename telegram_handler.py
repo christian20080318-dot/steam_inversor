@@ -171,6 +171,21 @@ def run_telegram_listener():
                                 "chat_id": chat_id, "text": status_msg, "parse_mode": "Markdown"
                             })
 
+                        else:
+                            # Si el usuario escribe cualquier otra cosa (ej. 'hola', 'como vas', etc.)
+                            reply_msg = (
+                                f"👋 ¡Hola! Soy tu **Steam Investor Bot**.\n\n"
+                                f"Estoy activo y vigilando el mercado de Steam en tiempo real.\n\n"
+                                f"📌 *Comandos que puedes enviarme:*\n"
+                                f"• `/status` - Ver estado y hora en Perú\n"
+                                f"• `/resumen` - Ver tu saldo en Soles y activos\n"
+                                f"• `/grafico` - Ver evolución del portafolio\n"
+                                f"• O responde `SI` / `NO` cuando te envíe una alerta."
+                            )
+                            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                "chat_id": chat_id, "text": reply_msg, "parse_mode": "Markdown"
+                            })
+
             time.sleep(1)
         except Exception as e:
             time.sleep(5)
