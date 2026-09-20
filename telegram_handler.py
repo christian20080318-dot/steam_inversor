@@ -75,19 +75,49 @@ def run_telegram_listener():
                         chat_id = msg_obj["chat"]["id"]
                         text = msg_obj["text"].strip().lower()
 
-                        if text in ["si", "sí", "yes", "s"]:
-                            # Buscar última oportunidad pendiente
+                        import re
+                        is_yes = False
+                        custom_qty = None
+                        
+                        if text in ["si", "s", "sí"]:
+                            is_yes = True
+                        elif text.startswith("si ") or text.startswith("sí ") or text.startswith("compre ") or text.startswith("compré "):
+                            is_yes = True
+                            nums = re.findall(r"\d+", text)
+                            if nums:
+                                custom_qty = int(nums[0])
+                        elif text.isdigit():
+                            # Si el usuario solo escribe un número (ej. "10") teniendo una compra pendiente
                             conn = get_connection()
                             cursor = conn.cursor()
                             cursor.execute("SELECT id FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
                             row = cursor.fetchone()
                             conn.close()
                             if row:
-                                result = process_user_decision(row["id"], True)
+                                is_yes = True
+                                custom_qty = int(text)
+
+                        if is_yes:
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT id FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
+                            row = cursor.fetchone()
+                            conn.close()
+                            if row:
+                                result = process_user_decision(row["id"], True, custom_quantity=custom_qty)
                                 if result:
+                                    real_cash, _, _ = get_current_capital(is_real=True)
+                                    msg = (
+                                        f"✅ *COMPRA REGISTRADA EN TU CARTERA REAL*\n\n"
+                                        f"📦 *Ítem:* `{result['item']}`\n"
+                                        f"🔢 *Cantidad Comprada:* `{result['quantity']} unidad(es)`\n"
+                                        f"💵 *Gasto Total:* `{CURRENCY_SYMBOL} {result['spent']:.2f}`\n"
+                                        f"💼 *Saldo Restante en Steam:* `{CURRENCY_SYMBOL} {real_cash:.2f}`\n\n"
+                                        f"🎯 *Monitoreo Activo:* El bot vigilará el mercado 24/7 y te avisará por aquí exactamente cuándo vender al mejor precio para asegurar tu ganancia neta."
+                                    )
                                     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
                                         "chat_id": chat_id,
-                                        "text": f"✅ Compra de *{result['item']}* registrada en Cartera Real por `{CURRENCY_SYMBOL} {result['spent']:.2f}`.",
+                                        "text": msg,
                                         "parse_mode": "Markdown"
                                     })
                             else:
@@ -95,7 +125,7 @@ def run_telegram_listener():
                                     "chat_id": chat_id, "text": "No hay compras pendientes de confirmar en este momento."
                                 })
 
-                        elif text in ["no", "n"]:
+                        elif text in ["no", "n", "rechazar", "cancelar"]:
                             conn = get_connection()
                             cursor = conn.cursor()
                             cursor.execute("SELECT id FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
@@ -106,7 +136,7 @@ def run_telegram_listener():
                                 if result:
                                     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
                                         "chat_id": chat_id,
-                                        "text": f"ℹ️ Descartada compra real de *{result['item']}*. Guardada en Simulador.",
+                                        "text": f"ℹ️ Descartada compra real de *{result['item']}*. Se envió al Simulador Virtual para medir qué hubiera pasado.",
                                         "parse_mode": "Markdown"
                                     })
                             else:

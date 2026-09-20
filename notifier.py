@@ -25,45 +25,55 @@ def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
     steam_url = build_steam_market_url(opp["app_id"], opp["item_name"])
     
     ai_section = ""
+    break_even = round(opp['buy_price'] / 0.8695, 2)
     if ai_verdict:
         ai_verdict_badge = "✅ APROBADO" if ai_verdict.get("is_valid") else "⚠️ REVISIÓN"
+        pros = ai_verdict.get('pros', f"Descuento real de +{opp['roi_percent']:.1f}% neto con {opp['volume_24h']} ventas/día.")
+        cons = ai_verdict.get('cons_and_risks', f"Debes vender a más de {CURRENCY_SYMBOL} {break_even:.2f} para cubrir la comisión oficial de Valve (15%).")
+        break_even = ai_verdict.get('break_even_price', break_even)
+        
         ai_section = (
-            f"🧠 *Auditoría IA (Gemini):* `{ai_verdict_badge}` (Confianza: {ai_verdict.get('confidence', 90)}%)\n"
-            f"💬 _{ai_verdict.get('reason', 'Validado por coherencia de mercado')}_\n\n"
+            f"🧠 *AUDITORÍA IA (GEMINI):* `{ai_verdict_badge}` (Confianza: {ai_verdict.get('confidence', 90)}%)\n"
+            f"• *Veredicto:* _{ai_verdict.get('reason', 'Validado')}_\n\n"
+            f"👍 *¿POR QUÉ ES RENTABLE? (Puntos a Favor):*\n"
+            f"_{pros}_\n\n"
+            f"⚠️ *POSIBLES FALLOS Y RIESGOS (¿Cuándo NO habría ganancia?):*\n"
+            f"• *Precio Mínimo de Rescate (Break-even):* `{CURRENCY_SYMBOL} {break_even:.2f}` (Si vendes por debajo de esto, incurres en pérdida).\n"
+            f"• *Factores de Riesgo:* _{cons}_\n\n"
         )
 
     mensaje = (
         f"🚨 *OPORTUNIDAD DE INVERSIÓN DETECTADA*\n\n"
         f"📦 *Producto:* `{opp['item_name']}`\n"
-        f"🎯 *Estrategia:* {opp.get('strategy', 'Oportunidad')} (Retorno: *{opp.get('horizon', '1 a 7 días')}*)\n"
+        f"🎯 *Estrategia:* {opp.get('strategy', 'Oportunidad')} (Retorno estimado: *{opp.get('horizon', '1 a 7 días')}*)\n"
         f"⚠️ *Nivel de Riesgo:* {opp['risk_level']}\n"
         f"📊 *Análisis Cuantitativo (Z-Score):* `{opp.get('quant_info', {}).get('z_score', 0)}` ({opp.get('quant_info', {}).get('signal', 'Normal')})\n"
-        f"📦 *Estado de Drop Pool:* {opp.get('pool_info', {}).get('label', 'Mercado Regular')}\n"
-        f"💰 *Precio Unitario:* `{CURRENCY_SYMBOL} {opp['buy_price']:.2f}` (Precio normal: {CURRENCY_SYMBOL} {opp['median_price']:.2f})\n"
-        f"🔢 *Cantidad Recomendada:* `{opp['quantity']} unidad(es)` (Ajustado a tu saldo)\n"
-        f"💵 *Inversión Total en Cartera:* `{CURRENCY_SYMBOL} {opp['total_investment']:.2f}` / Saldo Steam: `{CURRENCY_SYMBOL} {opp.get('steam_wallet_available', 0.0):.2f}`\n"
-        f"📈 *Ganancia Neta Estimada:* `+{CURRENCY_SYMBOL} {opp['total_net_profit']:.2f}` (*ROI: +{opp['roi_percent']:.1f}%* tras comisión)\n"
-        f"📊 *Volumen 24h:* {opp['volume_24h']} ventas/día (~{opp['volume_24h'] * 30} ventas/mes)\n"
+        f"📦 *Estado de Drop Pool:* {opp.get('pool_info', {}).get('label', 'Mercado Regular')}\n\n"
+        f"💰 *Precio Oferta Actual:* `{CURRENCY_SYMBOL} {opp['buy_price']:.2f}`\n"
+        f"🏷️ *Precio Medio Habitual:* `{CURRENCY_SYMBOL} {opp['median_price']:.2f}`\n"
+        f"🔢 *Cantidad Recomendada:* `{opp['quantity']} unidad(es)` (Ajustado a tu saldo disponible)\n"
+        f"💵 *Inversión Sugerida:* `{CURRENCY_SYMBOL} {opp['total_investment']:.2f}` (Tu saldo: `{CURRENCY_SYMBOL} {opp.get('steam_wallet_available', 0.0):.2f}`)\n"
+        f"📈 *Ganancia Neta Esperada:* `+{CURRENCY_SYMBOL} {opp['total_net_profit']:.2f}` (*ROI: +{opp['roi_percent']:.1f}%* tras comisión 15%)\n"
+        f"📊 *Rotación de Mercado:* {opp['volume_24h']} ventas/día (~{opp['volume_24h'] * 30} ventas/mes)\n"
     )
     
     if opp['volume_24h'] < 10:
-        mensaje += f"👻 *¡CUIDADO - ÍTEM FANTASMA!* (Liquidez extremadamente baja, muy difícil de revender)\n"
+        mensaje += f"👻 *¡CUIDADO - ÍTEM FANTASMA!* (Liquidez extremadamente baja, muy difícil de revender rápido)\n"
     
     mensaje += (
         f"\n{ai_section}"
-        f"ℹ️ *¿Qué hace el enlace?*\n"
-        f"Abre directamente el mercado de Steam para que compres manualmente la cantidad indicada al precio ofertado.\n\n"
-        f"🔗 [ABRIR LISTADO EN STEAM]({steam_url})\n\n"
-        f"👉 *¿Compraste el producto con tu dinero real?*\n"
-        f"Pulsa *SÍ* para registrarlo en tu cartera real o *NO* para guardarlo solo como simulación."
+        f"🔗 [ABRIR LISTADO OFICIAL EN STEAM]({steam_url})\n\n"
+        f"👉 *¿Compraste el producto con tu saldo de Steam?*\n"
+        f"• Si compraste todas ({opp['quantity']} u.), pulsa el botón **SÍ** abajo.\n"
+        f"• **¿Compraste otra cantidad?** Responde este chat con: `SI <cantidad>` (ejemplo: `SI 10` o `SI 5`) y se registrará tu gasto exacto."
     )
 
     # Inline Keyboard con botones de acción rápida
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ SÍ, compré el producto", "callback_data": f"decision:yes:{opp_id}"},
-                {"text": "❌ NO, no lo compré", "callback_data": f"decision:no:{opp_id}"}
+                {"text": f"✅ SÍ, compré las {opp['quantity']} u.", "callback_data": f"decision:yes:{opp_id}"},
+                {"text": "❌ NO comprar", "callback_data": f"decision:no:{opp_id}"}
             ]
         ]
     }

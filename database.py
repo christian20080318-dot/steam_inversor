@@ -181,13 +181,14 @@ def record_opportunity(item_name, app_id, buy_price, quantity, target_sell_price
     conn.close()
     return opp_id
 
-def process_user_decision(opp_id, user_said_yes):
+def process_user_decision(opp_id, user_said_yes, custom_quantity=None):
     """
     Si el usuario responde SÍ:
       - Se marca como REAL_ACTIVE (compra real hecha por el usuario con su dinero).
+      - Si especificó custom_quantity (ej. compró 10 en vez de 100), se recalcula el gasto exacto.
       - Se descuenta el efectivo en el ledger real.
     Si el usuario responde NO:
-      - Se marca como REJECTED para lo real, pero puede registrarse en el simulador para medir qué hubiera pasado.
+      - Se marca como SIMULATED para seguimiento del bot sin gastar dinero real.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -198,6 +199,18 @@ def process_user_decision(opp_id, user_said_yes):
         return None
 
     now_str = get_now_str()
+    actual_qty = item["quantity"]
+    actual_spent = item["total_spent"]
+
+    if custom_quantity is not None and int(custom_quantity) > 0:
+        actual_qty = int(custom_quantity)
+        actual_spent = round(actual_qty * item["buy_price"], 2)
+        # Recalcular ganancia neta esperada
+        unit_net = (item["target_sell_price"] * 0.8695) - item["buy_price"]
+        expected_profit = round(unit_net * actual_qty, 2)
+        cursor.execute("""
+        UPDATE portfolio SET quantity = ?, total_spent = ?, expected_profit = ? WHERE id = ?
+        """, (actual_qty, actual_spent, expected_profit, opp_id))
 
     if user_said_yes:
         # Registrar como compra real
@@ -207,19 +220,19 @@ def process_user_decision(opp_id, user_said_yes):
         
         # Actualizar Ledger Real
         real_cash, real_inv, real_eq = get_current_capital(is_real=True)
-        new_real_cash = max(0.0, real_cash - item["total_spent"])
-        new_real_inv = real_inv + item["total_spent"]
+        new_real_cash = max(0.0, real_cash - actual_spent)
+        new_real_inv = real_inv + actual_spent
         new_real_eq = new_real_cash + new_real_inv
         
         cursor.execute("""
         INSERT INTO capital_ledger (timestamp, mode, cash_balance, inventory_value, total_equity, notes)
         VALUES (?, 'REAL', ?, ?, ?, ?)
-        """, (now_str, new_real_cash, new_real_inv, new_real_eq, f"Compra Real: {item['item_name']} x{item['quantity']}"))
+        """, (now_str, new_real_cash, new_real_inv, new_real_eq, f"Compra Real: {item['item_name']} x{actual_qty}"))
         
         if item["is_aggressive"]:
             increment_aggressive_count()
             
-        result = {"status": "REAL_ACTIVE", "spent": item["total_spent"], "item": item["item_name"]}
+        result = {"status": "REAL_ACTIVE", "spent": actual_spent, "quantity": actual_qty, "item": item["item_name"]}
     else:
         # El usuario no lo compró con dinero real; pasa a SIMULATED para seguimiento del bot
         cursor.execute("""
@@ -228,16 +241,16 @@ def process_user_decision(opp_id, user_said_yes):
         
         # En el simulador sí se ejecuta para contrastar métricas
         sim_cash, sim_inv, sim_eq = get_current_capital(is_real=False)
-        new_sim_cash = max(0.0, sim_cash - item["total_spent"])
-        new_sim_inv = sim_inv + item["total_spent"]
+        new_sim_cash = max(0.0, sim_cash - actual_spent)
+        new_sim_inv = sim_inv + actual_spent
         new_sim_eq = new_sim_cash + new_sim_inv
         
         cursor.execute("""
         INSERT INTO capital_ledger (timestamp, mode, cash_balance, inventory_value, total_equity, notes)
         VALUES (?, 'SIMULATED', ?, ?, ?, ?)
-        """, (now_str, new_sim_cash, new_sim_inv, new_sim_eq, f"Compra Simulada: {item['item_name']} x{item['quantity']}"))
+        """, (now_str, new_sim_cash, new_sim_inv, new_sim_eq, f"Compra Simulada: {item['item_name']} x{actual_qty}"))
         
-        result = {"status": "SIMULATED", "spent": item["total_spent"], "item": item["item_name"]}
+        result = {"status": "SIMULATED", "spent": actual_spent, "quantity": actual_qty, "item": item["item_name"]}
 
     conn.commit()
     conn.close()
