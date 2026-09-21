@@ -209,8 +209,8 @@ def process_user_decision(opp_id, user_said_yes, custom_quantity=None):
         unit_net = (item["target_sell_price"] * 0.8695) - item["buy_price"]
         expected_profit = round(unit_net * actual_qty, 2)
         cursor.execute("""
-        UPDATE portfolio SET quantity = ?, total_spent = ?, expected_profit = ? WHERE id = ?
-        """, (actual_qty, actual_spent, expected_profit, opp_id))
+        UPDATE portfolio SET quantity = ?, total_spent = ? WHERE id = ?
+        """, (actual_qty, actual_spent, opp_id))
 
     if user_said_yes:
         # Registrar como compra real

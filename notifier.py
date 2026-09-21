@@ -13,6 +13,7 @@ from config import (
     CURRENCY_SYMBOL
 )
 from steam_client import build_steam_market_url
+from cs2_pool_tracker import parse_cs2_item_details
 
 def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
     """
@@ -23,6 +24,18 @@ def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
         return False
 
     steam_url = build_steam_market_url(opp["app_id"], opp["item_name"])
+    details = parse_cs2_item_details(opp["item_name"], opp.get("app_id", 730))
+    friendly_name = details["friendly_name"]
+    item_type = details["item_type"]
+    wear_info = details["wear"]
+
+    wear_section = ""
+    if wear_info:
+        wear_section = (
+            f"🛡️ *ESTADO DE DESGASTE EXACTO (CS2):*\n"
+            f"👉 {wear_info['label']}\n"
+            f"⚠️ _Asegúrate de comprar la versión '{wear_info['es']}' en Steam para que aplique este precio de oferta._\n\n"
+        )
     
     ai_section = ""
     break_even = round(opp['buy_price'] / 0.8695, 2)
@@ -44,14 +57,16 @@ def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
 
     mensaje = (
         f"🚨 *OPORTUNIDAD DE INVERSIÓN DETECTADA*\n\n"
-        f"📦 *Producto:* `{opp['item_name']}`\n"
+        f"📦 *Producto:* `{friendly_name}`\n"
+        f"🏷️ *Categoría:* {item_type}\n"
+        f"{wear_section}"
         f"🎯 *Estrategia:* {opp.get('strategy', 'Oportunidad')} (Retorno estimado: *{opp.get('horizon', '1 a 7 días')}*)\n"
         f"⚠️ *Nivel de Riesgo:* {opp['risk_level']}\n"
         f"📊 *Análisis Cuantitativo (Z-Score):* `{opp.get('quant_info', {}).get('z_score', 0)}` ({opp.get('quant_info', {}).get('signal', 'Normal')})\n"
         f"📦 *Estado de Drop Pool:* {opp.get('pool_info', {}).get('label', 'Mercado Regular')}\n\n"
         f"💰 *Precio Oferta Actual:* `{CURRENCY_SYMBOL} {opp['buy_price']:.2f}`\n"
         f"🏷️ *Precio Medio Habitual:* `{CURRENCY_SYMBOL} {opp['median_price']:.2f}`\n"
-        f"🔢 *Cantidad Recomendada:* `{opp['quantity']} unidad(es)` (Ajustado a tu saldo disponible)\n"
+        f"🔢 *Cantidad Sugerida:* `{opp['quantity']} unidad(es)` (Ajustado a tu saldo disponible)\n"
         f"💵 *Inversión Sugerida:* `{CURRENCY_SYMBOL} {opp['total_investment']:.2f}` (Tu saldo: `{CURRENCY_SYMBOL} {opp.get('steam_wallet_available', 0.0):.2f}`)\n"
         f"📈 *Ganancia Neta Esperada:* `+{CURRENCY_SYMBOL} {opp['total_net_profit']:.2f}` (*ROI: +{opp['roi_percent']:.1f}%* tras comisión 15%)\n"
         f"📊 *Rotación de Mercado:* {opp['volume_24h']} ventas/día (~{opp['volume_24h'] * 30} ventas/mes)\n"
@@ -63,16 +78,15 @@ def send_telegram_alert(opp, opp_id, chart_path=None, ai_verdict=None):
     mensaje += (
         f"\n{ai_section}"
         f"🔗 [ABRIR LISTADO OFICIAL EN STEAM]({steam_url})\n\n"
-        f"👉 *¿Compraste el producto con tu saldo de Steam?*\n"
-        f"• Si compraste todas ({opp['quantity']} u.), pulsa el botón **SÍ** abajo.\n"
-        f"• **¿Compraste otra cantidad?** Responde este chat con: `SI <cantidad>` (ejemplo: `SI 10` o `SI 5`) y se registrará tu gasto exacto."
+        f"👉 *¿Compraste este producto en Steam?*\n"
+        f"Pulsa **SÍ** para elegir del 1 al 10 cuántas compraste, o escribe directamente el número en este chat."
     )
 
     # Inline Keyboard con botones de acción rápida
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": f"✅ SÍ, compré las {opp['quantity']} u.", "callback_data": f"decision:yes:{opp_id}"},
+                {"text": "✅ SÍ, compré", "callback_data": f"prompt_qty:{opp_id}"},
                 {"text": "❌ NO comprar", "callback_data": f"decision:no:{opp_id}"}
             ]
         ]

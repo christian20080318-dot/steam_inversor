@@ -43,30 +43,96 @@ def run_telegram_listener():
                         # Responder al callback para quitar el icono de cargando
                         requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cb_id})
 
-                        if cb_data.startswith("decision:"):
+                        if cb_data.startswith("prompt_qty:") or cb_data.startswith("decision:yes:"):
+                            opp_id = int(cb_data.split(":")[2]) if cb_data.startswith("decision:yes:") else int(cb_data.split(":")[1])
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT * FROM portfolio WHERE id = ?", (opp_id,))
+                            item = cursor.fetchone()
+                            conn.close()
+
+                            if not item:
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                    "chat_id": chat_id, "text": "Esta oportunidad ya no está pendiente o ya fue procesada."
+                                })
+                            else:
+                                opp_qty = item["quantity"]
+                                buy_price = item["buy_price"]
+                                item_name = item["item_name"]
+                                kb = {
+                                    "inline_keyboard": [
+                                        [
+                                            {"text": "1", "callback_data": f"qty:{opp_id}:1"},
+                                            {"text": "2", "callback_data": f"qty:{opp_id}:2"},
+                                            {"text": "3", "callback_data": f"qty:{opp_id}:3"},
+                                            {"text": "4", "callback_data": f"qty:{opp_id}:4"},
+                                            {"text": "5", "callback_data": f"qty:{opp_id}:5"}
+                                        ],
+                                        [
+                                            {"text": "6", "callback_data": f"qty:{opp_id}:6"},
+                                            {"text": "7", "callback_data": f"qty:{opp_id}:7"},
+                                            {"text": "8", "callback_data": f"qty:{opp_id}:8"},
+                                            {"text": "9", "callback_data": f"qty:{opp_id}:9"},
+                                            {"text": "10", "callback_data": f"qty:{opp_id}:10"}
+                                        ]
+                                    ]
+                                }
+                                if opp_qty > 10:
+                                    kb["inline_keyboard"].append([
+                                        {"text": f"📦 Comprar recomendadas ({opp_qty} u.)", "callback_data": f"qty:{opp_id}:{opp_qty}"}
+                                    ])
+                                kb["inline_keyboard"].append([
+                                    {"text": "✍️ Escribir otra cantidad en el chat", "callback_data": f"prompt_custom:{opp_id}"}
+                                ])
+
+                                prompt_msg = (
+                                    f"🔢 *¿CUÁNTAS UNIDADES COMPRASTE?*\n\n"
+                                    f"📦 *Ítem:* `{item_name}`\n"
+                                    f"💰 *Precio Unitario:* `{CURRENCY_SYMBOL} {buy_price:.2f}`\n\n"
+                                    f"👉 *Toca un botón del 1 al 10* abajo, o escribe cualquier número directamente en este chat (ejemplo: `15`, `25`, `50`)."
+                                )
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                    "chat_id": chat_id,
+                                    "text": prompt_msg,
+                                    "parse_mode": "Markdown",
+                                    "reply_markup": kb
+                                })
+
+                        elif cb_data.startswith("qty:"):
                             parts = cb_data.split(":")
-                            decision = parts[1] # "yes" o "no"
-                            opp_id = int(parts[2])
+                            opp_id = int(parts[1])
+                            chosen_qty = int(parts[2])
 
-                            user_said_yes = (decision == "yes")
-                            result = process_user_decision(opp_id, user_said_yes)
-
+                            result = process_user_decision(opp_id, True, custom_quantity=chosen_qty)
                             if result:
-                                if user_said_yes:
-                                    msg = (
-                                        f"✅ *¡REGISTRADO EN CARTERA REAL!*\n\n"
-                                        f"Has confirmado la compra de *{result['item']}*.\n"
-                                        f"Monto invertido: `{CURRENCY_SYMBOL} {result['spent']:.2f}`.\n"
-                                        f"El bot monitoreará este activo para notificarte cuándo venderlo."
-                                    )
-                                else:
-                                    msg = (
-                                        f"ℹ️ *DESCARTADO DE CARTERA REAL*\n\n"
-                                        f"No se ha descontado dinero de tu saldo real.\n"
-                                        f"*{result['item']}* se registró en el *Simulador Virtual* para comparar su rendimiento."
-                                    )
+                                real_cash, _, _ = get_current_capital(is_real=True)
+                                msg = (
+                                    f"✅ *COMPRA REGISTRADA EN TU CARTERA REAL*\n\n"
+                                    f"📦 *Ítem:* `{result['item']}`\n"
+                                    f"🔢 *Cantidad Comprada:* `{result['quantity']} unidad(es)`\n"
+                                    f"💵 *Gasto Total:* `{CURRENCY_SYMBOL} {result['spent']:.2f}`\n"
+                                    f"💼 *Saldo Restante en Steam:* `{CURRENCY_SYMBOL} {real_cash:.2f}`\n\n"
+                                    f"🎯 *Monitoreo Activo:* El bot vigilará el mercado 24/7 y te avisará por aquí exactamente cuándo vender al mejor precio para asegurar tu ganancia neta."
+                                )
                                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
                                     "chat_id": chat_id, "text": msg, "parse_mode": "Markdown"
+                                })
+
+                        elif cb_data.startswith("prompt_custom:"):
+                            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                "chat_id": chat_id,
+                                "text": "✍️ *ESCRITURA LIBRE:* Escribe solo el número de unidades en este chat (ejemplo: `15` o `50`) y registraré tu compra con esa cantidad exacta.",
+                                "parse_mode": "Markdown"
+                            })
+
+                        elif cb_data.startswith("decision:no:"):
+                            opp_id = int(cb_data.split(":")[2])
+                            result = process_user_decision(opp_id, False)
+                            if result:
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                    "chat_id": chat_id,
+                                    "text": f"ℹ️ Descartada compra real de *{result['item']}*. Se envió al Simulador Virtual para medir qué hubiera pasado.",
+                                    "parse_mode": "Markdown"
                                 })
 
                     # 2. Manejo de mensajes de texto (Comandos o texto libre 'si' / 'no')
@@ -76,33 +142,82 @@ def run_telegram_listener():
                         text = msg_obj["text"].strip().lower()
 
                         import re
-                        is_yes = False
+                        is_plain_yes = text in ["si", "s", "sí"]
+                        has_qty = False
                         custom_qty = None
-                        
-                        if text in ["si", "s", "sí"]:
-                            is_yes = True
-                        elif text.startswith("si ") or text.startswith("sí ") or text.startswith("compre ") or text.startswith("compré "):
-                            is_yes = True
-                            nums = re.findall(r"\d+", text)
-                            if nums:
-                                custom_qty = int(nums[0])
-                        elif text.isdigit():
-                            # Si el usuario solo escribe un número (ej. "10") teniendo una compra pendiente
-                            conn = get_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT id FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
-                            row = cursor.fetchone()
-                            conn.close()
-                            if row:
-                                is_yes = True
-                                custom_qty = int(text)
 
-                        if is_yes:
+                        nums = re.findall(r"\d+", text)
+                        if (text.startswith("si ") or text.startswith("sí ") or text.startswith("compre ") or text.startswith("compré ")) and nums:
+                            has_qty = True
+                            custom_qty = int(nums[0])
+                        elif text.isdigit():
+                            has_qty = True
+                            custom_qty = int(text)
+
+                        if is_plain_yes:
+                            # Si el usuario solo escribe 'si', le mostramos los botones del 1 al 10
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT * FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
+                            row = cursor.fetchone()
+                            conn.close()
+
+                            if row:
+                                opp_id = row["id"]
+                                opp_qty = row["quantity"]
+                                buy_price = row["buy_price"]
+                                item_name = row["item_name"]
+                                kb = {
+                                    "inline_keyboard": [
+                                        [
+                                            {"text": "1", "callback_data": f"qty:{opp_id}:1"},
+                                            {"text": "2", "callback_data": f"qty:{opp_id}:2"},
+                                            {"text": "3", "callback_data": f"qty:{opp_id}:3"},
+                                            {"text": "4", "callback_data": f"qty:{opp_id}:4"},
+                                            {"text": "5", "callback_data": f"qty:{opp_id}:5"}
+                                        ],
+                                        [
+                                            {"text": "6", "callback_data": f"qty:{opp_id}:6"},
+                                            {"text": "7", "callback_data": f"qty:{opp_id}:7"},
+                                            {"text": "8", "callback_data": f"qty:{opp_id}:8"},
+                                            {"text": "9", "callback_data": f"qty:{opp_id}:9"},
+                                            {"text": "10", "callback_data": f"qty:{opp_id}:10"}
+                                        ]
+                                    ]
+                                }
+                                if opp_qty > 10:
+                                    kb["inline_keyboard"].append([
+                                        {"text": f"📦 Comprar recomendadas ({opp_qty} u.)", "callback_data": f"qty:{opp_id}:{opp_qty}"}
+                                    ])
+                                kb["inline_keyboard"].append([
+                                    {"text": "✍️ Escribir otra cantidad en el chat", "callback_data": f"prompt_custom:{opp_id}"}
+                                ])
+
+                                prompt_msg = (
+                                    f"🔢 *¿CUÁNTAS UNIDADES COMPRASTE?*\n\n"
+                                    f"📦 *Ítem:* `{item_name}`\n"
+                                    f"💰 *Precio Unitario:* `{CURRENCY_SYMBOL} {buy_price:.2f}`\n\n"
+                                    f"👉 *Toca un botón del 1 al 10* abajo, o escribe cualquier número directamente en este chat (ejemplo: `15`, `25`, `50`)."
+                                )
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                    "chat_id": chat_id,
+                                    "text": prompt_msg,
+                                    "parse_mode": "Markdown",
+                                    "reply_markup": kb
+                                })
+                            else:
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+                                    "chat_id": chat_id, "text": "No hay compras pendientes de confirmar en este momento."
+                                })
+
+                        elif has_qty:
+                            # Si el usuario escribió un número directo (ej. '15')
                             conn = get_connection()
                             cursor = conn.cursor()
                             cursor.execute("SELECT id FROM portfolio WHERE status = 'PENDING_CONFIRMATION' ORDER BY id DESC LIMIT 1")
                             row = cursor.fetchone()
                             conn.close()
+
                             if row:
                                 result = process_user_decision(row["id"], True, custom_quantity=custom_qty)
                                 if result:
